@@ -2,6 +2,9 @@ import socket  # noqa: F401
 from dataclasses import dataclass
 
 
+THROTTLE_TIME_MS = 0
+
+
 @dataclass
 class Request:
     request_len: int
@@ -15,6 +18,7 @@ class Request:
 class Response:
     correlation_id: int
     error_code: int
+    api_key: int
 
 
 def parse_request(request) -> Request | None:
@@ -35,17 +39,36 @@ def respond(request_bytes) -> Response | None:
     acceptable_apis = list(range(5))
     if request:
         if request.request_api_version not in acceptable_apis:
-            return Response(correlation_id=request.correlation_id, error_code=35)
+            return Response(
+                correlation_id=request.correlation_id,
+                api_key=request.request_api_key,
+                error_code=35,
+            )
 
-        return Response(correlation_id=request.correlation_id, error_code=0)
+        return Response(
+            correlation_id=request.correlation_id,
+            api_key=request.request_api_key,
+            error_code=0,
+        )
 
 
 def convert_response_to_bytes(response):
+    min_version = max_verion = 4
+    tag_buffer = int(0).to_bytes(1)
+
     response_body = response.correlation_id.to_bytes(4, "big")
     response_body += response.error_code.to_bytes(2, "big")
-    response_len = len(response_body).to_bytes(4, "big")
 
-    return response_len + response_body
+    response_body += int(2).to_bytes(1)
+    response_body += response.api_key.to_bytes(2, "big")
+    response_body += int(min_version).to_bytes(2, "big")
+    response_body += int(max_verion).to_bytes(2, "big")
+
+    response_body += tag_buffer
+    response_body += THROTTLE_TIME_MS.to_bytes(4, "big")
+    response_body += tag_buffer
+
+    return len(response_body).to_bytes(4, "big") + response_body
 
 
 def main():
