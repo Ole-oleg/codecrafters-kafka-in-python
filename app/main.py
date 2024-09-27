@@ -1,17 +1,51 @@
 import socket  # noqa: F401
+from dataclasses import dataclass
 
 
-def echo_correlation_id(request):
-    corr_id = int.from_bytes(request[8:12], "big")
+@dataclass
+class Request:
+    request_len: int
+    request_api_key: int
+    request_api_version: int
+    correlation_id: int
+    client_id: str | None
 
-    return get_response(corr_id)
+
+@dataclass
+class Response:
+    correlation_id: int
+    error_code: int
 
 
-def get_response(corr_id):
-    resonse_body = corr_id.to_bytes(4, "big")
-    response_len = len(resonse_body).to_bytes(4, "big")
+def parse_request(request) -> Request | None:
+    request_len = int.from_bytes(request[0:4], "big")
+    if request_len > 7:
+        return Request(
+            request_len=request_len,
+            request_api_key=int.from_bytes(request[4:6], "big"),
+            request_api_version=int.from_bytes(request[6:8], "big"),
+            correlation_id=int.from_bytes(request[8:12], "big"),
+            client_id=request[12:].decode("utf-8") if len(request) >= 12 else None,
+        )
 
-    return response_len + resonse_body
+
+def respond(request_bytes) -> Response | None:
+    request = parse_request(request_bytes)
+    print(request)
+    acceptable_apis = list(range(5))
+    if request:
+        if request.request_api_version not in acceptable_apis:
+            return Response(correlation_id=request.correlation_id, error_code=35)
+
+        return Response(correlation_id=request.correlation_id, error_code=0)
+
+
+def convert_response_to_bytes(response):
+    response_body = response.correlation_id.to_bytes(4, "big")
+    response_body += response.error_code.to_bytes(2, "big")
+    response_len = len(response_body).to_bytes(4, "big")
+
+    return response_len + response_body
 
 
 def main():
@@ -26,8 +60,9 @@ def main():
         data = conn.recv(64)
         if not data:
             break
-        response = echo_correlation_id(data)
-        conn.send(response)
+        response = respond(data)
+        response_bytes = convert_response_to_bytes(response)
+        conn.send(response_bytes)
 
 
 if __name__ == "__main__":
