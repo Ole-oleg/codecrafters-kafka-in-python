@@ -1,4 +1,5 @@
 import socket  # noqa: F401
+from multiprocessing import Process
 from dataclasses import dataclass
 
 
@@ -71,21 +72,29 @@ def convert_response_to_bytes(response):
     return len(response_body).to_bytes(4, "big") + response_body
 
 
-def main():
-    # You can use print statements as follows for debugging,
-    # they'll be visible when running tests.
-    print("Logs from your program will appear here!")
-
-    server = socket.create_server(("localhost", 9092), reuse_port=True)
-    conn, _ = server.accept()  # wait for client
-
+def pocess_connection(connection):
     while True:
-        data = conn.recv(64)
+        data = connection.recv(64)
         if not data:
             break
         response = respond(data)
         response_bytes = convert_response_to_bytes(response)
-        conn.send(response_bytes)
+        connection.send(response_bytes)
+
+
+def main():
+    print("Logs from your program will appear here!")
+
+    server = socket.create_server(("localhost", 9092), reuse_port=True)
+
+    processes = []
+    while True:
+        conn, _ = server.accept()  # wait for client
+        process = Process(target=pocess_connection, args=(conn,))
+        process.start()
+
+    for p in processes:
+        p.join()
 
 
 if __name__ == "__main__":
